@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# Install packages from package.json
+echo "Installing packages from package.json..."
+npm install
+
+# Copy env backup to .env.local file
+if [ -f ".env.local.example" ]; then
+    echo "Copying .env.local.example to .env.local..."
+    cp .env.local.example .env.local
+else
+    echo "No .env.local.example file found. Creating a new .env.local file..."
+    touch .env.local
+fi
+
+# Prompt user to fill the .env.local file
+echo "Please fill in the .env.local file with the necessary environment variables:"
+echo "  - COMPOSIO_API_KEY: Your Composio API key"
+echo "  - FIREWORKS_API_KEY: Your Fireworks AI API key"
+
+echo "Setup completed successfully!"
+echo "Now just run 'npm run dev' to start the development server."
