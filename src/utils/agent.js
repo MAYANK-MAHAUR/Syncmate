@@ -96,13 +96,31 @@ const ACTION_MAP = {
 
 // Field name mappings for different actions
 const FIELD_MAPPINGS = {
+  "GMAIL_SEND_EMAIL": {
+    "to": "recipient_email",
+    "recipient": "recipient_email",
+    "email": "recipient_email",
+    "body": "message_body",
+    "message": "message_body",
+    "content": "message_body"
+  },
+  "GMAIL_CREATE_EMAIL_DRAFT": {
+    "to": "recipient_email",
+    "recipient": "recipient_email",
+    "email": "recipient_email",
+    "body": "message_body",
+    "message": "message_body",
+    "content": "message_body"
+  },
   "GOOGLEDOCS_CREATE_DOCUMENT": {
     "body": "text",
-    "content": "text"
+    "content": "text",
+    "message": "text"
   },
   "GOOGLEDOCS_UPDATE_DOCUMENT": {
     "body": "text",
-    "content": "text"
+    "content": "text",
+    "message": "text"
   }
 };
 
@@ -118,11 +136,14 @@ export async function getActionViaUseCase(app, useCase) {
   }
   
   // Fallback to Composio API
+  console.log("No direct mapping found, trying Composio API...");
   try {
-    return await getActionFromComposioAPI(app, useCase);
+    const apiAction = await getActionFromComposioAPI(app, useCase);
+    console.log("Composio API found action:", apiAction);
+    return apiAction;
   } catch (err) {
-    console.warn("Composio API failed:", err.message);
-    throw new Error(`Could not find appropriate action for: ${useCase}`);
+    console.error("Composio API failed:", err);
+    throw new Error(`Could not find appropriate action for: ${useCase}. Please try rephrasing your request.`);
   }
 }
 
@@ -169,14 +190,27 @@ function getActionFromDirectMapping(app, useCase) {
 async function getActionFromComposioAPI(app, useCase) {
   const encodedUseCase = encodeURIComponent(useCase);
   const url = `https://backend.composio.dev/api/v2/actions?useCase=${encodedUseCase}&apps=${app}`;
+  
+  console.log("Calling Composio API:", url);
+  
   const res = await fetch(url, {
     headers: { "X-API-Key": process.env.COMPOSIO_API_KEY },
   });
 
-  if (!res.ok) throw new Error(`Composio API error ${res.status}`);
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error("Composio API error response:", errorText);
+    throw new Error(`Composio API error ${res.status}: ${errorText}`);
+  }
+  
   const data = await res.json();
+  console.log("Composio API response:", JSON.stringify(data, null, 2));
+  
   const action = data.items?.[0]?.name;
-  if (!action) throw new Error("No actions found from API");
+  if (!action) {
+    throw new Error("No actions found from Composio API");
+  }
+  
   return action.toUpperCase();
 }
 

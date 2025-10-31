@@ -30,7 +30,7 @@ async function runAgent(instruction, app, userId) {
       throw new Error(`Could not get input schema for action: ${actionName}`);
     }
 
-    // Enhanced prompt with better instructions
+    // Enhanced prompt with better instructions for Gmail
     const actionParamPrompt = `You are a parameter extraction expert. Extract the necessary parameters from the user's message to call the specified function.
 
 USER'S MESSAGE: ${instruction}
@@ -41,12 +41,18 @@ FUNCTION DETAILS:
 - Parameters: ${JSON.stringify(inputSchema.parameters, null, 2)}
 - Required Parameters: ${JSON.stringify(inputSchema.required)}
 
-IMPORTANT INSTRUCTIONS:
-1. Carefully read the user's intent from their message
-2. Match the intent to the function parameters precisely
-3. For email/messaging: extract recipient, subject, and body/content
-4. For documents: use "text" field for content (NOT "body" or "content")
-5. If information is missing, ask the user clearly
+IMPORTANT INSTRUCTIONS FOR EMAIL:
+1. For recipient email: use the field name from the schema EXACTLY (it might be "recipient_email", "to", or "email")
+2. For email body/content: use "message_body", "body", or "text" based on schema
+3. Extract the actual email address (e.g., "test@example.com")
+4. Subject should be clear and concise
+5. Body/message should be friendly and complete
+
+GENERAL INSTRUCTIONS:
+1. Carefully read the user's intent
+2. Match intent to function parameters precisely
+3. If information is missing, ask the user clearly
+4. Use EXACT parameter names from the schema
 
 OUTPUT FORMAT (VALID JSON ONLY, NO MARKDOWN):
 {
@@ -191,13 +197,15 @@ export async function POST(request) {
     if (error.message.includes('API key')) {
       errorMessage += "Invalid API key configuration.";
     } else if (error.message.includes('parse')) {
-      errorMessage += "Failed to parse AI response.";
+      errorMessage += "Failed to parse AI response. Please try rephrasing your request.";
     } else if (error.message.includes('action')) {
-      errorMessage += "Failed to execute the action.";
+      errorMessage += "Failed to execute the action. Please check your app connection.";
     } else if (error.message.includes('schema')) {
-      errorMessage += "Failed to get action schema.";
+      errorMessage += "Failed to get action details. Please try again.";
     } else if (error.message.includes('Could not find appropriate action')) {
-      errorMessage += "I couldn't understand which action to perform. Please be more specific.";
+      errorMessage += "I couldn't determine which action to perform. Please be more specific.";
+    } else if (error.message.includes('missing')) {
+      errorMessage += "Missing required information. " + error.message;
     } else {
       errorMessage += error.message || "Please try again or contact support.";
     }
