@@ -1,4 +1,3 @@
-// src/app/api/check-connect-app/[...slug]/route.js
 import { Composio } from "composio-core";
 import { NextResponse } from "next/server";
 

@@ -165,11 +165,10 @@ const ConnectApp = ({ card, id, setLoaderLoading, setAlert }) => {
                     `width=${width},height=${height},left=${left},top=${top}`
                 );
 
-                // Poll for popup close
+              
                 const pollTimer = setInterval(() => {
                     if (popup && popup.closed) {
                         clearInterval(pollTimer);
-                        // Wait a bit then check connection status
                         setTimeout(() => {
                             checkConnectionStatus();
                             setAlert({ 

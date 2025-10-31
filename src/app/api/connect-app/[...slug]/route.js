@@ -1,8 +1,7 @@
-// src/app/api/connect-app/[...slug]/route.js
 import { Composio } from "composio-core";
 import { NextResponse } from "next/server";
 
-// Helper function to extract slugs from URL
+
 function extractSlugs(url) {
     const parts = url.split('/').filter(Boolean);
     const apiIndex = parts.indexOf('api');

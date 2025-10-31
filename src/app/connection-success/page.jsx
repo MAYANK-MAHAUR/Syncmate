@@ -7,7 +7,6 @@ export default function ConnectionSuccess() {
     const router = useRouter();
 
     useEffect(() => {
-        // Redirect back to home after 3 seconds
         const timeout = setTimeout(() => {
             router.push("/");
         }, 3000);

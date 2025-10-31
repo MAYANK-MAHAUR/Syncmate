@@ -106,7 +106,6 @@ export async function getInputSchema(toolSlug, entityId) {
   };
 }
 
-// ---- execute ----
 export async function executeAction(entityId, actionName, params) {
   try {
     console.log("Executing action:", { entityId, actionName, params });
@@ -115,9 +114,8 @@ export async function executeAction(entityId, actionName, params) {
       entityId,
     });
 
-    // ✅ this is the correct function signature for your version
     const result = await toolset.executeAction({
-      action: actionName, // required string
+      action: actionName,
       entityId,
       params,
     });

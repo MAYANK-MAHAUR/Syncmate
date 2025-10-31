@@ -59,31 +59,24 @@ export default function Home() {
     }, [response]);
 
     useEffect(() => {
-        // Function to ensure that we remove the colon (:) if the response starts with it
         const removeColonIfPresent = (response) => {
-            // Trim any extra whitespace for consistency
             const trimmedResponse = response.trim();
 
-            // If it starts with ': ', remove ':' and any leading space
             if (trimmedResponse.startsWith(':')) {
-                return trimmedResponse.substring(1).trim(); // Removes ':' and leading spaces
+                return trimmedResponse.substring(1).trim();
             }
 
-            // If it doesn't start with ':', return the response as-is
             return trimmedResponse;
         };
 
-        // Adjust the response by removing the leading colon (if present)
         const adjustedResponse = removeColonIfPresent(response);
 
-        // Split the response on '\n' and map over each line to render it as markdown
         const parsedResponse = adjustedResponse.split('\n').map((line, index) => (
             <ReactMarkdown key={index}>{line}</ReactMarkdown>
         ));
 
-        // Update the state with the parsed response
         setRenderResponse(parsedResponse);
-    }, [response]); // This effect will re-run whenever 'response' changes
+    }, [response]);
 
     return (
         <>
@@ -134,8 +127,8 @@ export default function Home() {
                             <InputWithButton setResponse={setResponse} setLoading={setLoading} setOpen={setOpen} />
                             <div className="mt-4 flex gap-2 flex-wrap">
                                 <PromptSuggestionButton text="Star sentient-agi/ROMA repository in GitHub" />
-                                <PromptSuggestionButton text="Create a document in Google Docs, named YOURPARTNER and write SENTIENT is best ;)" />
-                                <PromptSuggestionButton text="Send mail to jhon@example.com that I won the hackathon" />
+                                <PromptSuggestionButton text="Create a document in Google Docs, named Syncmate and write SENTIENT is best ;)" />
+                                <PromptSuggestionButton text="Send mail to mayankgaming179@gmail.com that I won the hackathon" />
                             </div>
                         </div>
                     </div>

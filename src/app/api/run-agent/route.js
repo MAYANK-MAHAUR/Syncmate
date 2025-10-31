@@ -24,14 +24,13 @@ async function runAgent(instruction, app, userId) {
     }
 
     console.log("Action found:", actionName);
-    const inputSchema = await getInputSchema(actionName, userId); // ✅ pass entityId here
+    const inputSchema = await getInputSchema(actionName, userId);
 
     if (!inputSchema) {
       throw new Error(`Could not get input schema for action: ${actionName}`);
     }
 
-    // ... (the rest of your existing code remains unchanged)
-
+   
         const actionParamPrompt = `Give me the params which I need to give to the function to run it by understanding the user's message.
 USER'S MESSAGE: ${instruction}
 
@@ -63,17 +62,15 @@ Return ONLY valid JSON, nothing else.`;
         
         let response;
         try {
-            // Try to parse the response
             response = parseJsonGarbage(paramsResponse);
             
-            // Validate response structure
             if (!response || typeof response !== 'object') {
                 throw new Error('Invalid response format from LLM');
             }
             
-            // Ensure understand field exists
+            
             if (!response.hasOwnProperty('understand')) {
-                response.understand = true; // Default to true if not specified
+                response.understand = true;
             }
             
         } catch (parseError) {
@@ -152,7 +149,6 @@ export async function POST(request) {
 
         const composioAppName = APP_NAME_MAP[app.toLowerCase()] || app.toUpperCase();
 
-        // Check connection
         console.log('Checking connection for:', entityId, app);
         const isConnected = await checkUserConnection(entityId, app);
         
@@ -163,7 +159,6 @@ export async function POST(request) {
             }, { status: 200 });
         }
 
-        // Run agent
         console.log('Running agent...');
         const response = await runAgent(instruction, app, entityId);
 
@@ -180,7 +175,6 @@ export async function POST(request) {
             name: error.name
         });
         
-        // Return more specific error message
         let errorMessage = "Something went wrong. ";
         
         if (error.message.includes('API key')) {
