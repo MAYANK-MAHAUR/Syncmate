@@ -30,7 +30,6 @@ async function runAgent(instruction, app, userId) {
       throw new Error(`Could not get input schema for action: ${actionName}`);
     }
 
-    // Enhanced prompt with better instructions for Gmail
     const actionParamPrompt = `You are a parameter extraction expert. Extract the necessary parameters from the user's message to call the specified function.
 
 USER'S MESSAGE: ${instruction}
@@ -102,7 +101,6 @@ RESPONSE:`;
     const actionResponse = await executeAction(userId, actionName, response.params);
     console.log('Action response:', actionResponse);
 
-    // Generate user-friendly response
     const assistantResponsePrompt = `The user requested an action and it has been completed. Generate a friendly, concise response.
 
 USER'S REQUEST: ${instruction}
@@ -150,16 +148,79 @@ async function checkUserConnection(userId, app) {
   }
 }
 
+// CRITICAL FIX: Add runtime config for body parsing
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 export async function POST(request) {
   try {
-    const body = await request.json();
+    // CRITICAL FIX 1: More robust body parsing with error handling
+    let body;
+    try {
+      const text = await request.text();
+      console.log('Raw request body:', text);
+      
+      if (!text) {
+        throw new Error('Empty request body');
+      }
+      
+      body = JSON.parse(text);
+    } catch (parseError) {
+      console.error('Body parsing error:', parseError);
+      return NextResponse.json({
+        response: "Invalid request format. Please ensure you're sending valid JSON.",
+        success: false,
+        error: parseError.message
+      }, { status: 400 });
+    }
+
     const { instruction, app, entityId } = body;
 
-    console.log('Received request:', { instruction, app, entityId });
+    console.log('Parsed request:', { instruction, app, entityId, bodyKeys: Object.keys(body) });
 
-    if (!instruction || !app || !entityId) {
+    // CRITICAL FIX 2: More detailed validation
+    if (!instruction) {
       return NextResponse.json({
-        response: "Missing required parameters: instruction, app, or entityId.",
+        response: "Missing 'instruction' parameter in request body.",
+        success: false,
+        receivedKeys: Object.keys(body)
+      }, { status: 400 });
+    }
+
+    if (!app) {
+      return NextResponse.json({
+        response: "Missing 'app' parameter in request body.",
+        success: false,
+        receivedKeys: Object.keys(body)
+      }, { status: 400 });
+    }
+
+    if (!entityId) {
+      return NextResponse.json({
+        response: "Missing 'entityId' parameter in request body.",
+        success: false,
+        receivedKeys: Object.keys(body)
+      }, { status: 400 });
+    }
+
+    // Validate types
+    if (typeof instruction !== 'string' || instruction.trim() === '') {
+      return NextResponse.json({
+        response: "The 'instruction' must be a non-empty string.",
+        success: false
+      }, { status: 400 });
+    }
+
+    if (typeof app !== 'string' || app.trim() === '') {
+      return NextResponse.json({
+        response: "The 'app' must be a non-empty string.",
+        success: false
+      }, { status: 400 });
+    }
+
+    if (typeof entityId !== 'string' || entityId.trim() === '') {
+      return NextResponse.json({
+        response: "The 'entityId' must be a non-empty string.",
         success: false
       }, { status: 400 });
     }
@@ -182,7 +243,12 @@ export async function POST(request) {
     return NextResponse.json({
       response: response,
       success: true
-    }, { status: 200 });
+    }, { 
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
 
   } catch (error) {
     console.error("Run agent API error:", error);
@@ -214,6 +280,23 @@ export async function POST(request) {
       response: errorMessage,
       success: false,
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    }, { status: 500 });
+    }, { 
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
   }
+}
+
+// CRITICAL FIX 3: Add OPTIONS handler for CORS
+export async function OPTIONS(request) {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
 }
