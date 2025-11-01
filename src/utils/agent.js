@@ -98,19 +98,19 @@ const ACTION_MAP = {
 const FIELD_MAPPINGS = {
   "GMAIL_SEND_EMAIL": {
     "to": "recipient_email",
-    "recipient": "recipient_email",
     "email": "recipient_email",
-    "body": "message_body",
-    "message": "message_body",
-    "content": "message_body"
+    "recipient": "recipient_email",
+    "message": "body",
+    "content": "body",
+    "text": "body"
   },
   "GMAIL_CREATE_EMAIL_DRAFT": {
-    "to": "recipient_email",
-    "recipient": "recipient_email",
+    "to": "recipient_email", 
     "email": "recipient_email",
-    "body": "message_body",
-    "message": "message_body",
-    "content": "message_body"
+    "recipient": "recipient_email",
+    "message": "body",
+    "content": "body",
+    "text": "body"
   },
   "GOOGLEDOCS_CREATE_DOCUMENT": {
     "body": "text",
