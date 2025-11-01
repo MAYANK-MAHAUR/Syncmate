@@ -23,7 +23,6 @@ async function checkUserConnection(userId, app) {
 
     } catch (error) {
         console.error(`Error checking connection for ${app}:`, error);
-        // Return false instead of throwing to prevent UI breaks
         return false;
     }
 }

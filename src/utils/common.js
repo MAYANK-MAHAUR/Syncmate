@@ -1,5 +1,3 @@
-
-
 export async function getAppImage(appName) {
     const options = { method: 'GET', headers: { 'X-API-Key': process.env.NEXT_PUBLIC_COMPOSIO_API_KEY } };
 
@@ -17,8 +15,6 @@ export async function getAppImage(appName) {
     }
 }
 
-
 export async function connectAppViaEntityId(entityId, appName) {
     
 }
-

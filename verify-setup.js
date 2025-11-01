@@ -1,7 +1,3 @@
-#!/usr/bin/env node
-// verify-setup.js
-// Run with: node verify-setup.js
-
 const fs = require('fs');
 const path = require('path');
 
@@ -9,7 +5,6 @@ console.log('🔍 Verifying lazyA Setup...\n');
 
 let hasErrors = false;
 
-// Check 1: .env.local file
 console.log('1. Checking .env.local file...');
 const envPath = path.join(process.cwd(), '.env.local');
 if (fs.existsSync(envPath)) {
@@ -17,7 +12,6 @@ if (fs.existsSync(envPath)) {
     
     require('dotenv').config({ path: envPath });
     
-    // Check required env vars
     const requiredVars = ['COMPOSIO_API_KEY', 'FIREWORKS_API_KEY'];
     requiredVars.forEach(varName => {
         if (process.env[varName]) {
@@ -33,7 +27,6 @@ if (fs.existsSync(envPath)) {
     hasErrors = true;
 }
 
-// Check 2: Node modules
 console.log('\n2. Checking dependencies...');
 const nodeModulesPath = path.join(process.cwd(), 'node_modules');
 if (fs.existsSync(nodeModulesPath)) {
@@ -61,7 +54,6 @@ if (fs.existsSync(nodeModulesPath)) {
     hasErrors = true;
 }
 
-// Check 3: Required files
 console.log('\n3. Checking project files...');
 const requiredFiles = [
     'src/app/api/run-agent/route.js',
@@ -80,7 +72,6 @@ requiredFiles.forEach(file => {
     }
 });
 
-// Check 4: Test API connections (if env vars are set)
 console.log('\n4. Testing API connections...');
 if (process.env.COMPOSIO_API_KEY && process.env.FIREWORKS_API_KEY) {
     testAPIs();
@@ -89,7 +80,6 @@ if (process.env.COMPOSIO_API_KEY && process.env.FIREWORKS_API_KEY) {
 }
 
 async function testAPIs() {
-    // Test Composio
     try {
         const response = await fetch('https://backend.composio.dev/api/v1/apps?limit=1', {
             headers: { 'X-API-Key': process.env.COMPOSIO_API_KEY }
@@ -105,7 +95,6 @@ async function testAPIs() {
         hasErrors = true;
     }
 
-    // Test Fireworks
     try {
         const response = await fetch('https://api.fireworks.ai/inference/v1/models', {
             headers: { 
@@ -125,7 +114,6 @@ async function testAPIs() {
     }
 }
 
-// Final summary
 setTimeout(() => {
     console.log('\n' + '='.repeat(50));
     if (hasErrors) {

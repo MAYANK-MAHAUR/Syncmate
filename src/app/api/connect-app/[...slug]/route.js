@@ -28,7 +28,6 @@ export async function GET(request) {
             apiKey: process.env.COMPOSIO_API_KEY
         });
 
-        // Check if already connected
         const connectedAccounts = await composio.connectedAccounts.list({
             user_uuid: userId
         });
@@ -47,10 +46,8 @@ export async function GET(request) {
             }, { status: 200 });
         }
 
-        // Get entity or create if doesn't exist
         const entity = await composio.getEntity(userId);
 
-        // Initiate connection with proper redirect URL
         const redirectUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/connection-success`;
         
         const connection = await entity.initiateConnection({
@@ -70,7 +67,6 @@ export async function GET(request) {
     } catch (error) {
         console.error("Connect app API error:", error);
         
-        // Provide more detailed error messages
         let errorMessage = "Failed to connect app";
         if (error.message?.includes("not found")) {
             errorMessage = "App not found. Please ensure the app is enabled in your Composio dashboard.";

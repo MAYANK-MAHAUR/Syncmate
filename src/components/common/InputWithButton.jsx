@@ -21,7 +21,6 @@ export function InputWithButton({ setResponse, setLoading, setOpen }) {
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        // Validation
         if (!instruction.trim()) {
             setResponse("Please enter an instruction.");
             setOpen(true);
@@ -37,7 +36,6 @@ export function InputWithButton({ setResponse, setLoading, setOpen }) {
         setLoading(true);
 
         try {
-            // CRITICAL FIX: Ensure proper JSON formatting
             const requestBody = {
                 instruction: instruction.trim(),
                 app: app.toLowerCase(),
@@ -56,7 +54,6 @@ export function InputWithButton({ setResponse, setLoading, setOpen }) {
 
             console.log('Response status:', response.status);
             
-            // Check if response is OK
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error('Response error:', errorText);
@@ -69,7 +66,6 @@ export function InputWithButton({ setResponse, setLoading, setOpen }) {
             setOpen(true);
             setResponse(data.response || "No response from server.");
 
-            // Clear input on success
             if (data.success) {
                 setInstruction("");
             }
