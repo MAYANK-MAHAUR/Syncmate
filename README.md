@@ -45,7 +45,7 @@ Syncmate is an intelligent AI agent that bridges the gap between human intent an
 
 1. **Clone the repository**
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/MAYANK-MAHAUR/Syncmate.git
 cd syncmate
 ```
 
@@ -61,6 +61,7 @@ Edit `.env.local` and add your API keys:
 ```env
 COMPOSIO_API_KEY=your_composio_key_here
 FIREWORKS_API_KEY=your_fireworks_key_here
+NEXT_PUBLIC_APP_URL=
 ```
 
 4. **Start the development server**
