@@ -1,5 +1,122 @@
 import { OpenAIToolSet } from "composio-core";
 
+// EXACT parameter mappings from Composio API documentation
+const COMPOSIO_ACTION_PARAMS = {
+  // Gmail Actions
+  "GMAIL_SEND_EMAIL": {
+    required: ["recipient_email", "subject", "body"],
+    optional: ["cc", "bcc", "attachment", "is_html", "thread_id", "extra_recipients", "user_id"],
+    mappings: {
+      "to": "recipient_email",
+      "email": "recipient_email",
+      "recipient": "recipient_email",
+      "message": "body",
+      "content": "body",
+      "text": "body",
+      "message_body": "body"
+    }
+  },
+  "GMAIL_CREATE_EMAIL_DRAFT": {
+    required: ["recipient_email"],
+    optional: ["subject", "body", "cc", "bcc", "attachment", "is_html", "thread_id", "extra_recipients", "user_id"],
+    mappings: {
+      "to": "recipient_email",
+      "email": "recipient_email",
+      "recipient": "recipient_email",
+      "message": "body",
+      "content": "body",
+      "text": "body",
+      "message_body": "body"
+    }
+  },
+  "GMAIL_REPLY_TO_THREAD": {
+    required: ["thread_id", "message_body", "recipient_email"],
+    optional: ["attachment", "user_id"],
+    mappings: {
+      "to": "recipient_email",
+      "email": "recipient_email",
+      "recipient": "recipient_email",
+      "message": "message_body",
+      "body": "message_body",
+      "content": "message_body",
+      "text": "message_body"
+    }
+  },
+  // GitHub Actions
+  "GITHUB_STAR_A_REPOSITORY_FOR_THE_AUTHENTICATED_USER": {
+    required: ["owner", "repo"],
+    optional: [],
+    mappings: {
+      "repository": "repo",
+      "repository_name": "repo",
+      "repo_name": "repo"
+    }
+  },
+  "GITHUB_CREATE_AN_ISSUE": {
+    required: ["owner", "repo", "title"],
+    optional: ["body", "assignees", "labels", "milestone"],
+    mappings: {
+      "repository": "repo",
+      "issue_title": "title",
+      "description": "body",
+      "content": "body"
+    }
+  },
+  // Google Docs Actions
+  "GOOGLEDOCS_CREATE_DOCUMENT": {
+    required: ["title"],
+    optional: ["text"],
+    mappings: {
+      "name": "title",
+      "document_name": "title",
+      "body": "text",
+      "content": "text",
+      "message": "text"
+    }
+  },
+  "GOOGLEDOCS_UPDATE_DOCUMENT": {
+    required: ["document_id"],
+    optional: ["text", "title"],
+    mappings: {
+      "doc_id": "document_id",
+      "id": "document_id",
+      "body": "text",
+      "content": "text"
+    }
+  },
+  // Google Calendar Actions
+  "GOOGLECALENDAR_CREATE_EVENT": {
+    required: ["summary", "start_datetime", "end_datetime"],
+    optional: ["description", "location", "attendees", "timezone"],
+    mappings: {
+      "title": "summary",
+      "event_title": "summary",
+      "start": "start_datetime",
+      "end": "end_datetime",
+      "body": "description",
+      "content": "description"
+    }
+  },
+  // YouTube Actions
+  "YOUTUBE_SEARCH_YOUTUBE": {
+    required: ["query"],
+    optional: ["max_results", "order"],
+    mappings: {
+      "search_query": "query",
+      "search": "query",
+      "q": "query"
+    }
+  },
+  "YOUTUBE_SUBSCRIBE_TO_CHANNEL": {
+    required: ["channel_id"],
+    optional: [],
+    mappings: {
+      "channel": "channel_id",
+      "id": "channel_id"
+    }
+  }
+};
+
 // Enhanced action mappings with priority keywords
 const ACTION_MAP = {
   github: {
@@ -94,48 +211,16 @@ const ACTION_MAP = {
   },
 };
 
-// Field name mappings for different actions
-const FIELD_MAPPINGS = {
-  "GMAIL_SEND_EMAIL": {
-    "to": "recipient_email",
-    "email": "recipient_email",
-    "recipient": "recipient_email",
-    "message": "body",
-    "content": "body",
-    "text": "body"
-  },
-  "GMAIL_CREATE_EMAIL_DRAFT": {
-    "to": "recipient_email", 
-    "email": "recipient_email",
-    "recipient": "recipient_email",
-    "message": "body",
-    "content": "body",
-    "text": "body"
-  },
-  "GOOGLEDOCS_CREATE_DOCUMENT": {
-    "body": "text",
-    "content": "text",
-    "message": "text"
-  },
-  "GOOGLEDOCS_UPDATE_DOCUMENT": {
-    "body": "text",
-    "content": "text",
-    "message": "text"
-  }
-};
-
 // ---- Enhanced action lookup with scoring ----
 export async function getActionViaUseCase(app, useCase) {
   console.log("Getting action for:", { app, useCase });
   
-  // Try direct mapping first (more reliable)
   const directAction = getActionFromDirectMapping(app, useCase);
   if (directAction) {
     console.log("Direct mapping found:", directAction);
     return directAction;
   }
   
-  // Fallback to Composio API
   console.log("No direct mapping found, trying Composio API...");
   try {
     const apiAction = await getActionFromComposioAPI(app, useCase);
@@ -157,7 +242,6 @@ function getActionFromDirectMapping(app, useCase) {
     return null;
   }
 
-  // Score each action based on keyword matches
   let bestMatch = null;
   let bestScore = 0;
 
@@ -166,7 +250,6 @@ function getActionFromDirectMapping(app, useCase) {
     
     for (const keyword of config.keywords) {
       if (useCaseLower.includes(keyword)) {
-        // Longer keyword matches get higher scores
         score += keyword.split(" ").length * 10;
       }
     }
@@ -182,7 +265,6 @@ function getActionFromDirectMapping(app, useCase) {
     return bestMatch;
   }
 
-  // No good match found
   console.warn("No keyword match found in direct mapping");
   return null;
 }
@@ -214,7 +296,7 @@ async function getActionFromComposioAPI(app, useCase) {
   return action.toUpperCase();
 }
 
-// ---- Schema fetch with field mapping hints ----
+// ---- Schema fetch with proper parameter mapping ----
 export async function getInputSchema(toolSlug, entityId) {
   const url = `https://backend.composio.dev/api/v3/tools/execute/${toolSlug}`;
   console.log("Fetching schema from Composio v3:", url);
@@ -240,40 +322,66 @@ export async function getInputSchema(toolSlug, entityId) {
     throw new Error(`Failed schema: ${res.status}`);
   }
 
+  // Get parameter info from our mappings
+  const paramInfo = COMPOSIO_ACTION_PARAMS[toolSlug] || {
+    required: data.input_schema?.required || [],
+    optional: [],
+    mappings: {}
+  };
+
   return {
     parameters: data.input_schema?.properties || {},
-    required: data.input_schema?.required || [],
+    required: paramInfo.required,
+    optional: paramInfo.optional || [],
+    mappings: paramInfo.mappings || {},
     description: data.description || toolSlug,
     actionName: toolSlug
   };
 }
 
-// ---- Apply field mappings before execution ----
+// ---- Intelligent field mapping ----
 function applyFieldMappings(actionName, params) {
-  const mappings = FIELD_MAPPINGS[actionName];
-  if (!mappings) return params;
+  console.log(`Applying mappings for action: ${actionName}`);
+  console.log('Original params:', params);
+  
+  const actionConfig = COMPOSIO_ACTION_PARAMS[actionName];
+  
+  if (!actionConfig) {
+    console.warn(`No parameter config found for ${actionName}, using params as-is`);
+    return params;
+  }
 
   const mappedParams = { ...params };
+  const mappings = actionConfig.mappings || {};
   
+  // Apply mappings
   for (const [oldField, newField] of Object.entries(mappings)) {
-    if (mappedParams[oldField] !== undefined) {
-      console.log(`Mapping field: ${oldField} → ${newField}`);
+    if (mappedParams[oldField] !== undefined && mappedParams[newField] === undefined) {
+      console.log(`✓ Mapping: ${oldField} → ${newField}`);
       mappedParams[newField] = mappedParams[oldField];
       delete mappedParams[oldField];
     }
   }
   
+  // Validate required fields
+  const missingFields = actionConfig.required.filter(field => !mappedParams[field]);
+  if (missingFields.length > 0) {
+    console.error(`Missing required fields: ${missingFields.join(', ')}`);
+    throw new Error(`Missing required parameters: ${missingFields.join(', ')}`);
+  }
+  
+  console.log('Mapped params:', mappedParams);
   return mappedParams;
 }
 
-// ---- Execute action with field mapping ----
+// ---- Execute action with robust error handling ----
 export async function executeAction(entityId, actionName, params) {
   try {
     console.log("Executing action:", { entityId, actionName, params });
     
     // Apply field mappings
     const mappedParams = applyFieldMappings(actionName, params);
-    console.log("Mapped params:", mappedParams);
+    console.log("Final mapped params:", mappedParams);
     
     const toolset = new OpenAIToolSet({
       apiKey: process.env.COMPOSIO_API_KEY,
@@ -286,12 +394,22 @@ export async function executeAction(entityId, actionName, params) {
       params: mappedParams,
     });
 
-    console.log("Action executed successfully");
+    console.log("✓ Action executed successfully");
     return result;
   } catch (err) {
     console.error("executeAction error:", err);
+    
+    // Provide helpful error messages
+    if (err.message.includes('Missing required parameters')) {
+      throw err; // Already has good message
+    } else if (err.message.includes('recipient')) {
+      throw new Error(`Email recipient error: Please ensure you've provided a valid email address. ${err.message}`);
+    } else if (err.message.includes('authentication') || err.message.includes('unauthorized')) {
+      throw new Error(`Authentication error: Please reconnect your ${actionName.split('_')[0]} account.`);
+    }
+    
     throw new Error(
-      `Failed to execute action ${actionName}: ${err.message || err}`
+      `Failed to execute ${actionName}: ${err.message || err}`
     );
   }
 }

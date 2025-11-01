@@ -6,44 +6,158 @@ const FIREWORKS_CONFIG = {
   apiKey: process.env.FIREWORKS_API_KEY
 };
 
-const SYSTEM_PROMPTS = {
-  parameter_extraction: `You are an expert at extracting structured parameters from natural language instructions.
+// Action-specific extraction rules
+const ACTION_EXTRACTION_RULES = {
+  "GMAIL_SEND_EMAIL": `
+CRITICAL - EXACT PARAMETER NAMES FOR GMAIL:
+- "recipient_email" (NOT "to", NOT "email", NOT "recipient")
+- "subject" (for the email subject line)
+- "body" (NOT "message", NOT "content", NOT "text")
 
-Your task: Parse user instructions and extract EXACT parameter values needed for API calls.
-
-KEY RULES:
-1. Return ONLY valid JSON - no markdown, no code blocks, no explanations
-2. Use exact field names provided in the schema
-3. Extract ALL required information from the user's message
-4. For GitHub repos: parse "owner/repo" format (e.g., "facebook/react" → owner: "facebook", repo: "react")
-5. For emails: extract recipient (to), subject, and message (body)
-6. For documents: extract document name (title) and content (text/body)
-7. If critical information is missing, set "understand": false and ask for it
-
-ALWAYS return this JSON structure:
+Example extraction:
+User: "Send email to john@example.com about meeting tomorrow"
+Correct output:
 {
-    "understand": true/false,
-    "askUser": "question if understand is false" or null,
-    "params": { "field": "value" }
+  "understand": true,
+  "askUser": null,
+  "params": {
+    "recipient_email": "john@example.com",
+    "subject": "Meeting Tomorrow",
+    "body": "Hello, I wanted to reach out about our meeting tomorrow."
+  }
 }`,
 
-  friendly_response: `You are a helpful AI assistant providing friendly confirmations to users.
+  "GMAIL_CREATE_EMAIL_DRAFT": `
+CRITICAL - EXACT PARAMETER NAMES FOR GMAIL DRAFT:
+- "recipient_email" (required - NOT "to", NOT "email")
+- "subject" (optional - the email subject)
+- "body" (optional - NOT "message", NOT "content")
 
-Your task: Convert technical API responses into natural, conversational language.
+If creating a draft without recipient, you MUST ask the user for the recipient email.`,
 
-KEY RULES:
-1. Be concise (2-3 sentences maximum)
-2. Confirm what action was completed
-3. Highlight any important information from the result
-4. Use a warm, professional tone
-5. Avoid technical jargon unless necessary
-6. Don't mention internal IDs, action names, or API details
+  "GITHUB_STAR_A_REPOSITORY_FOR_THE_AUTHENTICATED_USER": `
+CRITICAL - EXACT PARAMETER NAMES FOR GITHUB STAR:
+- "owner" (the GitHub username/org that owns the repo)
+- "repo" (the repository name)
 
-Focus on what matters to the user.`
+Example extraction:
+User: "Star facebook/react repository"
+Parse as: owner="facebook", repo="react"
+
+User: "Star the sentient-agi/ROMA repository"
+Parse as: owner="sentient-agi", repo="ROMA"`,
+
+  "GOOGLEDOCS_CREATE_DOCUMENT": `
+CRITICAL - EXACT PARAMETER NAMES FOR GOOGLE DOCS:
+- "title" (required - the document name)
+- "text" (optional - NOT "body", NOT "content")
+
+Example:
+User: "Create a doc called Meeting Notes and write Hello World"
+{
+  "params": {
+    "title": "Meeting Notes",
+    "text": "Hello World"
+  }
+}`,
+
+  "GOOGLECALENDAR_CREATE_EVENT": `
+CRITICAL - EXACT PARAMETER NAMES FOR CALENDAR:
+- "summary" (required - NOT "title")
+- "start_datetime" (required - ISO format)
+- "end_datetime" (required - ISO format)
+- "description" (optional - NOT "body")
+- "attendees" (optional - array of email addresses)`,
+
+  "YOUTUBE_SEARCH_YOUTUBE": `
+CRITICAL - EXACT PARAMETER NAMES FOR YOUTUBE SEARCH:
+- "query" (required - NOT "search", NOT "q")
+- "max_results" (optional - number, default 10)
+
+Example:
+User: "Search for GaiaNet on YouTube"
+{
+  "params": {
+    "query": "GaiaNet",
+    "max_results": 10
+  }
+}`
+};
+
+const SYSTEM_PROMPTS = {
+  parameter_extraction: `You are a parameter extraction expert for API actions.
+
+YOUR CRITICAL TASK:
+1. Extract parameters using EXACT field names from the schema
+2. NEVER invent field names - only use what's in the schema
+3. Parse natural language into structured data
+
+FIELD NAME RULES:
+- Gmail uses: recipient_email, subject, body
+- GitHub uses: owner, repo, title
+- Google Docs uses: title, text
+- Calendar uses: summary, start_datetime, end_datetime
+- YouTube uses: query
+
+ALWAYS return valid JSON (no markdown, no code blocks):
+{
+    "understand": true/false,
+    "askUser": "question if needed" or null,
+    "params": { "exact_field_name": "value" }
+}
+
+If you're missing REQUIRED information, set understand=false and ask for it.`,
+
+  friendly_response: `You are a helpful AI assistant providing friendly confirmations.
+
+Generate natural, conversational responses (2-3 sentences max) that:
+1. Confirm what action was completed
+2. Highlight important info from the result
+3. Use a warm, professional tone
+4. Avoid technical jargon
+
+Example:
+Result: {"successfull": true, "data": {"id": "abc123"}}
+Good response: "I've successfully sent your email! The message has been delivered."
+Bad response: "Action GMAIL_SEND_EMAIL executed with ID abc123 and status successful."`
 };
 
 function getSystemPrompt(taskType = 'default') {
   return SYSTEM_PROMPTS[taskType] || SYSTEM_PROMPTS.friendly_response;
+}
+
+function buildParameterExtractionPrompt(instruction, actionName, schema) {
+  const actionRules = ACTION_EXTRACTION_RULES[actionName] || '';
+  
+  return `${actionRules}
+
+USER'S REQUEST: "${instruction}"
+
+ACTION: ${actionName}
+REQUIRED FIELDS: ${schema.required?.join(', ') || 'none'}
+AVAILABLE FIELDS: ${Object.keys(schema.parameters || {}).join(', ')}
+
+SCHEMA DETAILS:
+${JSON.stringify(schema.parameters, null, 2)}
+
+EXTRACTION RULES:
+1. Use EXACT field names from "AVAILABLE FIELDS" above
+2. Extract email addresses, dates, names, and content from user's request
+3. For Gmail: recipient_email, subject, body
+4. For GitHub repos: parse "owner/repo" format (e.g., "facebook/react")
+5. Be smart about inferring context (e.g., "send email about meeting" → subject: "Meeting")
+6. If missing REQUIRED fields, set understand=false and ask for them
+
+Return ONLY valid JSON:
+{
+    "understand": true,
+    "askUser": null,
+    "params": {
+        "recipient_email": "[email protected]",
+        "subject": "Subject here",
+        "body": "Message content here"
+    }
+}`;
 }
 
 export async function chatLLM(messages, taskType = 'default') {
@@ -116,7 +230,7 @@ export async function singleMessageLLM(taskType = 0, prompt) {
         { role: "system", content: getSystemPrompt(actualTaskType) },
         { role: "user", content: prompt }
       ],
-      temperature: actualTaskType === 'parameter_extraction' ? 0.3 : 0.7,
+      temperature: actualTaskType === 'parameter_extraction' ? 0.2 : 0.7, // Lower temp for extraction
       max_tokens: 2000,
     });
 
@@ -157,23 +271,28 @@ export async function extractParameters(instruction, actionName, schema, maxRetr
   
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const prompt = buildParameterExtractionPrompt(instruction, actionName, schema, attempt > 0);
+      const prompt = buildParameterExtractionPrompt(instruction, actionName, schema);
+      console.log(`Attempt ${attempt + 1}: Extracting parameters...`);
+      
       const response = await singleMessageLLM('parameter_extraction', prompt);
       
-      const parsed = JSON.parse(response.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
+      // Clean response
+      const cleaned = response.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const parsed = JSON.parse(cleaned);
       
       if (!parsed.params && parsed.understand !== false) {
-        throw new Error('No params in response');
+        throw new Error('LLM returned no params');
       }
       
+      console.log('✓ Parameters extracted successfully');
       return parsed;
       
     } catch (error) {
-      console.error(`Parameter extraction attempt ${attempt + 1} failed:`, error);
+      console.error(`Attempt ${attempt + 1} failed:`, error.message);
       lastError = error;
       
       if (attempt < maxRetries) {
-        console.log('Retrying parameter extraction...');
+        console.log('Retrying with more explicit instructions...');
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
@@ -182,17 +301,4 @@ export async function extractParameters(instruction, actionName, schema, maxRetr
   throw new Error(`Failed to extract parameters after ${maxRetries + 1} attempts: ${lastError?.message}`);
 }
 
-function buildParameterExtractionPrompt(instruction, actionName, schema, isRetry) {
-  return `${isRetry ? 'RETRY - Please be more careful with field names and format.\n\n' : ''}Extract parameters from this instruction:
-
-"${instruction}"
-
-For action: ${actionName}
-Required fields: ${schema.required.join(', ')}
-Available fields: ${Object.keys(schema.parameters).join(', ')}
-
-${isRetry ? '\nREMEMBER: Return ONLY valid JSON with exact field names from the available fields list.\n' : ''}
-Return JSON:`;
-}
-
-export { getSystemPrompt };
+export { getSystemPrompt, buildParameterExtractionPrompt };

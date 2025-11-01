@@ -1,6 +1,6 @@
 import { parseJsonGarbage } from "@/helpers/common";
 import { executeAction, getActionViaUseCase, getInputSchema } from "@/utils/agent";
-import { singleMessageLLM } from "@/utils/llm";
+import { extractParameters, singleMessageLLM } from "@/utils/llm";
 import { Composio } from "composio-core";
 import { NextResponse } from "next/server";
 
@@ -16,91 +16,67 @@ async function runAgent(instruction, app, userId) {
   try {
     const composioAppName = APP_NAME_MAP[app.toLowerCase()] || app.toUpperCase();
 
-    console.log("Getting action for:", composioAppName, instruction);
+    console.log("=== STEP 1: Getting action ===");
+    console.log(`App: ${composioAppName}, Instruction: ${instruction}`);
+    
     const actionName = await getActionViaUseCase(composioAppName, instruction);
-
     if (!actionName) {
       throw new Error(`Could not find appropriate action for: ${instruction}`);
     }
+    console.log(`✓ Action found: ${actionName}`);
 
-    console.log("Action found:", actionName);
+    console.log("\n=== STEP 2: Getting input schema ===");
     const inputSchema = await getInputSchema(actionName, userId);
-
     if (!inputSchema) {
       throw new Error(`Could not get input schema for action: ${actionName}`);
     }
+    console.log(`✓ Schema loaded. Required fields: ${inputSchema.required.join(', ')}`);
 
-    const actionParamPrompt = `You are a parameter extraction expert. Extract the necessary parameters from the user's message to call the specified function.
-
-USER'S MESSAGE: ${instruction}
-
-FUNCTION DETAILS:
-- Name: ${actionName}
-- Description: ${inputSchema.description}
-- Parameters: ${JSON.stringify(inputSchema.parameters, null, 2)}
-- Required Parameters: ${JSON.stringify(inputSchema.required)}
-
-IMPORTANT INSTRUCTIONS FOR EMAIL:
-1. For recipient email: use the field name from the schema EXACTLY (it might be "recipient_email", "to", or "email")
-2. For email body/content: use "message_body", "body", or "text" based on schema
-3. Extract the actual email address (e.g., "test@example.com")
-4. Subject should be clear and concise
-5. Body/message should be friendly and complete
-
-GENERAL INSTRUCTIONS:
-1. Carefully read the user's intent
-2. Match intent to function parameters precisely
-3. If information is missing, ask the user clearly
-4. Use EXACT parameter names from the schema
-
-OUTPUT FORMAT (VALID JSON ONLY, NO MARKDOWN):
-{
-    "understand": true,
-    "askUser": null,
-    "params": {
-        "param1": "value1",
-        "param2": "value2"
-    }
-}
-
-If you need more information, set "understand" to false and put your question in "askUser".
-
-RESPONSE:`;
-
-    console.log('Calling LLM for params...');
-    const paramsResponse = await singleMessageLLM(0, actionParamPrompt);
-    console.log('LLM params response:', paramsResponse);
+    console.log("\n=== STEP 3: Extracting parameters with LLM ===");
     
+    // Use enhanced parameter extraction
     let response;
     try {
+      response = await extractParameters(instruction, actionName, inputSchema);
+    } catch (extractError) {
+      console.error('Parameter extraction failed, trying fallback method...');
+      
+      // Fallback to original method with enhanced prompt
+      const actionParamPrompt = buildEnhancedPrompt(instruction, actionName, inputSchema);
+      const paramsResponse = await singleMessageLLM(0, actionParamPrompt);
+      console.log('LLM response:', paramsResponse);
+      
       response = parseJsonGarbage(paramsResponse);
-      
-      if (!response || typeof response !== 'object') {
-        throw new Error('Invalid response format from LLM');
-      }
-      
-      if (!response.hasOwnProperty('understand')) {
-        response.understand = true;
-      }
-      
-    } catch (parseError) {
-      console.error('JSON parse error:', parseError);
-      console.error('Raw response:', paramsResponse);
-      throw new Error(`Failed to parse LLM response: ${parseError.message}`);
+    }
+    
+    if (!response || typeof response !== 'object') {
+      throw new Error('Invalid response format from LLM');
+    }
+    
+    if (!response.hasOwnProperty('understand')) {
+      response.understand = true;
     }
 
+    console.log(`✓ Parameters extracted. Understand: ${response.understand}`);
+
     if (!response.understand) {
-      return response.askUser || "I need more information to complete this task.";
+      const question = response.askUser || "I need more information to complete this task.";
+      console.log(`❓ Need more info: ${question}`);
+      return question;
     }
 
     if (!response.params) {
       throw new Error('No parameters provided by LLM');
     }
 
-    console.log('Executing action with params:', response.params);
+    console.log('\n=== STEP 4: Executing action ===');
+    console.log('Parameters:', JSON.stringify(response.params, null, 2));
+    
     const actionResponse = await executeAction(userId, actionName, response.params);
-    console.log('Action response:', actionResponse);
+    console.log('✓ Action executed successfully');
+    console.log('Response:', JSON.stringify(actionResponse, null, 2));
 
+    console.log('\n=== STEP 5: Generating user-friendly response ===');
     const assistantResponsePrompt = `The user requested an action and it has been completed. Generate a friendly, concise response.
 
 USER'S REQUEST: ${instruction}
@@ -115,15 +91,86 @@ Generate a clear, helpful response that:
 
 RESPONSE:`;
 
-    console.log('Getting assistant response...');
-    const assistantResponse = await singleMessageLLM(0, assistantResponsePrompt);
+    const assistantResponse = await singleMessageLLM(1, assistantResponsePrompt);
+    console.log('✓ Response generated');
+    
     return assistantResponse;
 
   } catch (error) {
-    console.error("Run agent error details:", error);
-    console.error("Error stack:", error.stack);
+    console.error("\n=== ERROR ===");
+    console.error("Error:", error.message);
+    console.error("Stack:", error.stack);
     throw error;
   }
+}
+
+function buildEnhancedPrompt(instruction, actionName, inputSchema) {
+  // Action-specific hints
+  const actionHints = {
+    'GMAIL_SEND_EMAIL': `
+CRITICAL: Gmail requires EXACT parameter names:
+- "recipient_email" (NOT "to", NOT "email")
+- "subject" (the email subject line)
+- "body" (NOT "message", NOT "content")
+
+Example:
+User: "Send email to john@test.com about tomorrow's meeting"
+YOU MUST OUTPUT:
+{
+  "understand": true,
+  "askUser": null,
+  "params": {
+    "recipient_email": "john@test.com",
+    "subject": "Tomorrow's Meeting",
+    "body": "Hello, I wanted to reach out about our meeting tomorrow."
+  }
+}`,
+    'GMAIL_CREATE_EMAIL_DRAFT': `
+CRITICAL: Use these exact field names:
+- "recipient_email" (required)
+- "subject" (optional)
+- "body" (optional)`,
+    'GITHUB_STAR_A_REPOSITORY_FOR_THE_AUTHENTICATED_USER': `
+Parse repository in format "owner/repo":
+- "facebook/react" → owner: "facebook", repo: "react"
+- "sentient-agi/ROMA" → owner: "sentient-agi", repo: "ROMA"`,
+    'GOOGLEDOCS_CREATE_DOCUMENT': `
+Use exact field names:
+- "title" (the document name)
+- "text" (the document content, NOT "body")`,
+  };
+
+  const hint = actionHints[actionName] || '';
+
+  return `You are a parameter extraction expert. Extract parameters from the user's message.
+
+${hint}
+
+USER'S MESSAGE: "${instruction}"
+
+ACTION: ${actionName}
+DESCRIPTION: ${inputSchema.description}
+REQUIRED PARAMETERS: ${JSON.stringify(inputSchema.required)}
+ALL PARAMETERS: ${JSON.stringify(Object.keys(inputSchema.parameters))}
+SCHEMA: ${JSON.stringify(inputSchema.parameters, null, 2)}
+
+INSTRUCTIONS:
+1. Use EXACT parameter names from "ALL PARAMETERS" above
+2. Extract information intelligently from user's natural language
+3. For emails: extract recipient address, infer subject if not explicit, create friendly body
+4. For GitHub: parse "owner/repo" format
+5. If missing REQUIRED info, set understand=false and ask for it
+
+OUTPUT FORMAT (VALID JSON ONLY, NO MARKDOWN):
+{
+    "understand": true,
+    "askUser": null,
+    "params": {
+        "param_name": "extracted_value"
+    }
+}
+
+RESPONSE:`;
 }
 
 async function checkUserConnection(userId, app) {
@@ -148,23 +195,26 @@ async function checkUserConnection(userId, app) {
   }
 }
 
-// CRITICAL FIX: Add runtime config for body parsing
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request) {
+  console.log("\n========================================");
+  console.log("NEW REQUEST TO /api/run-agent");
+  console.log("========================================");
+  
   try {
-    // CRITICAL FIX 1: More robust body parsing with error handling
     let body;
     try {
       const text = await request.text();
-      console.log('Raw request body:', text);
+      console.log('Raw request body length:', text?.length || 0);
       
       if (!text) {
         throw new Error('Empty request body');
       }
       
       body = JSON.parse(text);
+      console.log('✓ Request body parsed successfully');
     } catch (parseError) {
       console.error('Body parsing error:', parseError);
       return NextResponse.json({
@@ -176,70 +226,58 @@ export async function POST(request) {
 
     const { instruction, app, entityId } = body;
 
-    console.log('Parsed request:', { instruction, app, entityId, bodyKeys: Object.keys(body) });
+    console.log('Request details:', {
+      instruction: instruction?.substring(0, 50) + '...',
+      app,
+      entityId,
+      allKeys: Object.keys(body)
+    });
 
-    // CRITICAL FIX 2: More detailed validation
-    if (!instruction) {
+    // Detailed validation
+    if (!instruction || typeof instruction !== 'string' || instruction.trim() === '') {
       return NextResponse.json({
-        response: "Missing 'instruction' parameter in request body.",
+        response: "Missing or invalid 'instruction' parameter.",
         success: false,
         receivedKeys: Object.keys(body)
       }, { status: 400 });
     }
 
-    if (!app) {
+    if (!app || typeof app !== 'string' || app.trim() === '') {
       return NextResponse.json({
-        response: "Missing 'app' parameter in request body.",
+        response: "Missing or invalid 'app' parameter.",
         success: false,
         receivedKeys: Object.keys(body)
       }, { status: 400 });
     }
 
-    if (!entityId) {
+    if (!entityId || typeof entityId !== 'string' || entityId.trim() === '') {
       return NextResponse.json({
-        response: "Missing 'entityId' parameter in request body.",
+        response: "Missing or invalid 'entityId' parameter.",
         success: false,
         receivedKeys: Object.keys(body)
-      }, { status: 400 });
-    }
-
-    // Validate types
-    if (typeof instruction !== 'string' || instruction.trim() === '') {
-      return NextResponse.json({
-        response: "The 'instruction' must be a non-empty string.",
-        success: false
-      }, { status: 400 });
-    }
-
-    if (typeof app !== 'string' || app.trim() === '') {
-      return NextResponse.json({
-        response: "The 'app' must be a non-empty string.",
-        success: false
-      }, { status: 400 });
-    }
-
-    if (typeof entityId !== 'string' || entityId.trim() === '') {
-      return NextResponse.json({
-        response: "The 'entityId' must be a non-empty string.",
-        success: false
       }, { status: 400 });
     }
 
     const composioAppName = APP_NAME_MAP[app.toLowerCase()] || app.toUpperCase();
 
-    console.log('Checking connection for:', entityId, app);
+    console.log(`\nChecking connection for user: ${entityId}, app: ${app}`);
     const isConnected = await checkUserConnection(entityId, app);
     
     if (!isConnected) {
+      console.warn(`❌ User not connected to ${app}`);
       return NextResponse.json({
         response: `You have not connected the ${composioAppName} app. Please connect it first using the settings modal.`,
         success: false
       }, { status: 200 });
     }
+    console.log(`✓ User connected to ${app}`);
 
-    console.log('Running agent...');
+    console.log('\n>>> Running agent...');
     const response = await runAgent(instruction, app, entityId);
 
+    console.log('\n✓✓✓ SUCCESS ✓✓✓');
+    console.log('Response:', response.substring(0, 100) + '...');
+    
     return NextResponse.json({
       response: response,
       success: true
@@ -251,29 +289,24 @@ export async function POST(request) {
     });
 
   } catch (error) {
-    console.error("Run agent API error:", error);
-    console.error("Error details:", {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    });
+    console.error("\n❌❌❌ ERROR ❌❌❌");
+    console.error("Error:", error.message);
+    console.error("Stack:", error.stack);
     
     let errorMessage = "Something went wrong. ";
     
     if (error.message.includes('API key')) {
       errorMessage += "Invalid API key configuration.";
-    } else if (error.message.includes('parse')) {
-      errorMessage += "Failed to parse AI response. Please try rephrasing your request.";
-    } else if (error.message.includes('action')) {
-      errorMessage += "Failed to execute the action. Please check your app connection.";
-    } else if (error.message.includes('schema')) {
-      errorMessage += "Failed to get action details. Please try again.";
+    } else if (error.message.includes('parse') || error.message.includes('JSON')) {
+      errorMessage += "Failed to process the request. Please try rephrasing.";
+    } else if (error.message.includes('recipient_email') || error.message.includes('Missing required')) {
+      errorMessage += error.message; // Already descriptive
     } else if (error.message.includes('Could not find appropriate action')) {
       errorMessage += "I couldn't determine which action to perform. Please be more specific.";
-    } else if (error.message.includes('missing')) {
-      errorMessage += "Missing required information. " + error.message;
+    } else if (error.message.includes('authentication') || error.message.includes('unauthorized')) {
+      errorMessage += "Authentication error. Please reconnect your account.";
     } else {
-      errorMessage += error.message || "Please try again or contact support.";
+      errorMessage += error.message || "Please try again.";
     }
     
     return NextResponse.json({
@@ -289,7 +322,6 @@ export async function POST(request) {
   }
 }
 
-// CRITICAL FIX 3: Add OPTIONS handler for CORS
 export async function OPTIONS(request) {
   return new NextResponse(null, {
     status: 200,
